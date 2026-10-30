@@ -38,7 +38,7 @@ my_manifest my_preload my_product my_region my_stock`）。
 | `device/oneplus/OP68F7L1` | `android_device_oneplus_OP68F7L1` | 机型树：`BoardConfig.mk`、`device.mk`、产品定义、`extract-files.py`、`proprietary-files.txt`、`fastboot-info.txt`、DSU 脚本 |
 | `device/oneplus/mt6878-common` | `android_device_oneplus_mt6878-common` | 平台树：`BoardConfigCommon.mk`、`common.mk`、`init/`、`configs/props`、`configs/vintf`、`sepolicy/` |
 | `device/oneplus/OP68F7L1-kernel` | `android_device_oneplus_OP68F7L1-kernel` | stock 内核 `Image`（34 MiB，不编译） |
-| `vendor/oneplus/OP68F7L1` | `proprietary_vendor_oneplus_OP68F7L1` | blob 仓库：`proprietary/`（5.9 GiB）+ 生成的 `Android.bp` / `Android.mk` / `*-vendor.mk` |
+| `vendor/oneplus/OP68F7L1` | `proprietary_vendor_oneplus_OP68F7L1` | 元数据仓库：生成的 `Android.bp` / `Android.mk` / `*-vendor.mk` + `releases/`；5.9 GiB blob 作为该仓库的 GitHub Release 分卷（4 个 `tar.zst`，2.6 GiB）发布，`releases/extract-blobs.sh` 还原到 `proprietary/` |
 
 依赖方向只有单向一条：机型树 `include device/oneplus/mt6878-common/BoardConfigCommon.mk`
 并 `inherit-product .../common.mk`，平台树反过来不引用机型树；`lineage.dependencies`
@@ -121,7 +121,7 @@ device/oneplus/mt6878-common/           # 平台仓库
 ```
 
 另外两个仓库：`device/oneplus/OP68F7L1-kernel/Image`（预编译内核）与
-`vendor/oneplus/OP68F7L1/`（blob，见“vendor 目录”一节）。
+`vendor/oneplus/OP68F7L1/`（元数据 + Release 分卷，见“vendor 仓库”一节）。
 
 ```
 vendor/oneplus/OP68F7L1/
@@ -146,7 +146,7 @@ repo sync -c -j"$(nproc)"
 #   device/oneplus/OP68F7L1
 #   device/oneplus/mt6878-common
 #   device/oneplus/OP68F7L1-kernel
-#   vendor/oneplus/OP68F7L1        （blob 已提取，见“vendor 目录”一节）
+#   vendor/oneplus/OP68F7L1        （再把 4 个 Release 分卷放进 releases/ 并跑 extract-blobs.sh）
 # 并从 local_manifests/OP68F7L1.xml 添加 hardware/mediatek、
 # device/mediatek/sepolicy_vndr、tools/extract-utils 三个仓库
 # （repo 会自动读取该文件；extract-utils 不在 LOS 默认 manifest 里）。
@@ -162,13 +162,39 @@ mka bacon            # 或 mka systemimage vendorimage productimage odmimage boo
 但它们**不参与**本树的测试与刷机流程，真机上保持 stock。
 **没有** `vendor_boot.img` 与 `dtbo.img`（见上）。
 
-### vendor 目录（blob 已就位）
+### vendor 仓库（元数据 + Release 分卷）
 
-`vendor/oneplus/OP68F7L1/` 现在的状态：`proprietary/` 下是**已从真机取出的 stock
-blob**（`vendor` 2.0 GiB + `odm` 4.0 GiB，共 7,575 个条目、5.9 GiB），并且
-`Android.bp`（3,056 个模块）、`Android.mk`、`BoardConfigVendor.mk`、
-`OP68F7L1-vendor.mk`（4,715 条拷贝规则）都是用 `extract-files.py -m` 从这份 blob
-生成的真规则，不再是骨架。
+`vendor/oneplus/OP68F7L1/` 已经用 `extract-files.py -m` 生成好了真规则：
+`Android.bp`（3,056 个模块，含 1,061 条 `install_symlink`）、`Android.mk`、
+`BoardConfigVendor.mk`、`OP68F7L1-vendor.mk`（4,715 条拷贝规则），它们随仓库提交。
+
+blob 本体（`vendor` 2.11 GB + `odm` 4.19 GB，共 7,594 个文件、5.9 GiB）**不进 git**：
+GitHub 拒绝 100 MiB 以上的单文件和 2 GB 以上的单次 push，而这里有 4 个 100–200 MiB
+的文件。所以按 Ace6 之外的另一种做法，把它们切成 4 个 `tar.zst`（合计 2.6 GiB）
+挂在该仓库的 Release 上：
+
+| 分卷 | 内容 | 压缩后 |
+| --- | --- | --- |
+| `OP68F7L1-blobs-1-odm-etc.tar.zst` | `odm/etc`（相机模型、firmware 配置） | 789 MiB |
+| `OP68F7L1-blobs-2-odm-lib.tar.zst` | `odm/lib64`、`odm/lib` | 865 MiB |
+| `OP68F7L1-blobs-3-odm-misc.tar.zst` | `odm/{app,bin,firmware,overlay,priv-app,vendor}` 等 | 39 MiB |
+| `OP68F7L1-blobs-4-vendor.tar.zst` | 整个 stock `/vendor` | 915 MiB |
+
+还原（在 `vendor/oneplus/OP68F7L1/` 下，把 4 个分卷和 `SHA256SUMS` 先下到 `releases/`）：
+
+```bash
+releases/extract-blobs.sh     # 先 sha256sum -c，再 tar --zstd -xf 到 proprietary/
+```
+
+发布命令（每台机器只需一次）：
+
+```bash
+gh release create blobs-16.0.0 releases/OP68F7L1-blobs-*.tar.zst releases/SHA256SUMS \
+    --title "OnePlus PYS110 (OP68F7L1) proprietary blobs - ColorOS 16" \
+    --notes-file releases/README.md
+```
+
+四路的详细说明、校验和与发布命令在 `vendor/oneplus/OP68F7L1/releases/README.md`。
 
 生成时做的三件事（都已固化在 `proprietary-files.txt` 里）：
 - **符号链接**用 `;SYMLINK=<链接 dst>` 标在真实文件那一行（共 1,061 条链接、876 个
@@ -179,7 +205,7 @@ blob**（`vendor` 2.0 GiB + `odm` 4.0 GiB，共 7,575 个条目、5.9 GiB），�
   `app/`、`priv-app/`，否则会在 `write_product_packages()` 里 `assert` 失败）；
 - `system_ext/*` 的 2,399 条**暂时整块注释**（本机磁盘只够 vendor+odm）。
 
-`proprietary/` 里带 `.gitignore`（`*`），blob 不随设备树仓库提交。
+`proprietary/` 与 `releases/*.tar.zst` 都在 `.gitignore` 里，blob 既不随设备树仓库也不随 vendor 仓库提交。
 
 ### 重新提取 blob（换机器/换 ROM 时）
 
@@ -257,7 +283,7 @@ DSU_DRY_RUN=1 device/oneplus/OP68F7L1/tools/dsu.sh install   # 只打印命令�
   所以能启动。注意**别把 `/metadata/gsi/avb_enforce` 建出来**，那会强制校验导致启动失败。
   另外真机装了隐藏解锁状态的模块，`getprop ro.boot.flash.locked` /
   `ro.boot.verifiedbootstate` 显示的是伪装的 `1`/`green`，不要被它误导。
-- `vendor` / `odm` 可以进 DSU，但要留意：本树 vendor/odm 的 blob 已提取并对齐
+- `vendor` / `odm` 可以进 DSU，但要留意：本树 vendor/odm 的 blob 来自 Release 分卷、已还原到 `proprietary/` 并按 `proprietary-files.txt` 对齐
   `proprietary-files.txt`，和 stock 是同一份（只多了 fixup 的 `DT_NEEDED` 改写）。
   第一次建议先只测 `system`（最保守），跑通后再加 `system_ext product`。
   默认分区列表因此是 `system system_ext product`。
