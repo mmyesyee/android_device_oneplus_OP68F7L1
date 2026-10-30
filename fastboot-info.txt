@@ -1,0 +1,24 @@
+# fastboot-info for OP68F7L1 (OnePlus PYS110, MT6878)
+#
+# boot / init_boot / vendor_boot / dtbo are intentionally NOT flashed:
+# the stock kernel (boot) and the stock generic ramdisk (init_boot, which also
+# carries KernelSU) boot the system built by this tree, and vendor_boot/dtbo are
+# stock as well. Only the logical partitions rebuilt here are written.
+#
+# vendor_dlkm, odm_dlkm, system_dlkm and the "my_*" partitions are left alone,
+# which is why there is no "update-super" here: resparsing super would destroy
+# them.
+#
+# For quick testing without touching any statically sized partition, prefer the
+# DSU flow: tools/dsu.sh install
+version 1
+flash --apply-vbmeta vbmeta
+flash vbmeta_system
+reboot fastboot
+flash system
+flash system_ext
+flash product
+flash vendor
+flash odm
+if-wipe erase userdata
+if-wipe erase metadata

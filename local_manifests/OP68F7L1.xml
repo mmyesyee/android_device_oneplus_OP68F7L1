@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OnePlus PYS110 (OP68F7L1, MT6878) - LineageOS 24.0 local manifest.
+
+  Only the repositories this device tree references are listed. The device
+  tree itself (device/oneplus/OP68F7L1) and the prebuilt kernel repository
+  (device/oneplus/OP68F7L1-kernel) are intentionally NOT listed: they live in
+  the same directory as this file and a forced repo sync would overwrite
+  local commits.
+
+  tools/extract-utils is also not part of LineageOS' default manifest
+  (checked against lineage-24.0's default.xml), so it is listed here.
+-->
+<manifest>
+  <remote name="lineageos" fetch="https://github.com/LineageOS" revision="lineage-24.0" />
+
+  <!-- MTK platform headers/helpers used through PRODUCT_SOONG_NAMESPACES,
+       mediatek_framework_compatibility_matrix.xml and the
+       device/mediatek/sepolicy_vndr include. -->
+  <project path="hardware/mediatek" name="android_hardware_mediatek" remote="lineageos" />
+
+  <!-- Vendor sepolicy base (BoardConfig.mk includes SEPolicy.mk). -->
+  <project path="device/mediatek/sepolicy_vndr"
+           name="android_device_mediatek_sepolicy_vndr" remote="lineageos" />
+
+  <!-- extract-files.py / extract_utils library (required to pull the blobs). -->
+  <project path="tools/extract-utils" name="android_tools_extract-utils" remote="lineageos" />
+</manifest>
