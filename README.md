@@ -29,6 +29,21 @@ super 只有一个逻辑分组 **`main`**（`main_a` / `main_b`，各 1690723942
 以及 OPLUS 的十个 `my_*`（`my_bigball my_carrier my_company my_engineering my_heytap
 my_manifest my_preload my_product my_region my_stock`）。
 
+## 仓库结构
+
+按 Ace6-Development 的做法拆成 4 个仓库，各自独立 `git init`、可单独推到 GitHub：
+
+| 本地路径 | 建议的仓库名 | 内容 |
+| --- | --- | --- |
+| `device/oneplus/OP68F7L1` | `android_device_oneplus_OP68F7L1` | 机型树：`BoardConfig.mk`、`device.mk`、产品定义、`extract-files.py`、`proprietary-files.txt`、`fastboot-info.txt`、DSU 脚本 |
+| `device/oneplus/mt6878-common` | `android_device_oneplus_mt6878-common` | 平台树：`BoardConfigCommon.mk`、`common.mk`、`init/`、`configs/props`、`configs/vintf`、`sepolicy/` |
+| `device/oneplus/OP68F7L1-kernel` | `android_device_oneplus_OP68F7L1-kernel` | stock 内核 `Image`（34 MiB，不编译） |
+| `vendor/oneplus/OP68F7L1` | `proprietary_vendor_oneplus_OP68F7L1` | blob 仓库：`proprietary/`（5.9 GiB）+ 生成的 `Android.bp` / `Android.mk` / `*-vendor.mk` |
+
+依赖方向只有单向一条：机型树 `include device/oneplus/mt6878-common/BoardConfigCommon.mk`
+并 `inherit-product .../common.mk`，平台树反过来不引用机型树；`lineage.dependencies`
+里列了平台树。
+
 ## 重要设计决定
 
 1. **不编译内核、不生成 vendor_boot、不生成 dtbo。**
@@ -80,28 +95,33 @@ my_manifest my_preload my_product my_region my_stock`）。
 ## 目录结构
 
 ```
-device/oneplus/OP68F7L1/
+device/oneplus/OP68F7L1/                # 机型仓库
 ├── Android.bp                 # soong_namespace
 ├── Android.mk                 # 仅在 TARGET_DEVICE == OP68F7L1 时递归子目录
 ├── AndroidProducts.mk         # lineage_OP68F7L1-{user,userdebug,eng}
-├── BoardConfig.mk
-├── device.mk
+├── BoardConfig.mk             # 只写机型差异 + include 平台树
+├── device.mk                  # AAPT/屏幕 + inherit 平台树 + vendor 仓库
 ├── lineage_OP68F7L1.mk
+├── lineage.dependencies       # 平台树等依赖列表
 ├── extract-files.py           # 从 stock 分区提取 blob（含 DT_NEEDED / VINTF 修补）
 ├── setup-makefiles.py         # = extract-files.py --regenerate_makefiles
 ├── proprietary-files.txt
 ├── fastboot-info.txt
+├── tools/dsu.sh               # DSU 测试助手（装镜像进 /data，不碰 boot/init_boot）
+└── local_manifests/OP68F7L1.xml
+
+device/oneplus/mt6878-common/           # 平台仓库
+├── BoardConfigCommon.mk       # 架构/分区/内核参数/super/AVB/WiFi/sepolicy
+├── common.mk                  # virtual A/B、update_engine、init 脚本、props
 ├── configs/
 │   ├── props/                 # vendor/odm/system/product 的属性（TARGET_*_PROP）
 │   └── vintf/                 # stock /vendor 的 manifest.xml + compatibility_matrix.xml
 ├── init/                      # fstab.mt6878、MTK 各 init.*.rc、ueventd.mt6878.rc
-├── tools/dsu.sh               # DSU 测试助手（装镜像进 /data，不碰 boot/init_boot）
-├── local_manifests/OP68F7L1.xml
 └── sepolicy/{basic/non_plat,vendor,private,public}
 ```
 
-仓库同级目录 `device/oneplus/OP68F7L1-kernel/Image` 是预编译内核；
-`vendor/oneplus/OP68F7L1/` 是 blob 仓库（blob 已就位，见“vendor 目录”一节）。
+另外两个仓库：`device/oneplus/OP68F7L1-kernel/Image`（预编译内核）与
+`vendor/oneplus/OP68F7L1/`（blob，见“vendor 目录”一节）。
 
 ```
 vendor/oneplus/OP68F7L1/
@@ -109,7 +129,7 @@ vendor/oneplus/OP68F7L1/
 ├── Android.bp                 # 3,056 个 Soong 模块
 ├── BoardConfigVendor.mk       # 生成文件，故意为空
 ├── OP68F7L1-vendor.mk         # 由 extract-files.py -m 生成的真规则
-└── proprietary/               # 提取出的 blob，带 .gitignore
+└── proprietary/               # 提取出的 blob
 ```
 
 ## 构建
@@ -122,8 +142,9 @@ export http_proxy=$all_proxy https_proxy=$all_proxy
 repo init -u https://github.com/LineageOS/android.git -b lineage-24.0 --git-lfs
 repo sync -c -j"$(nproc)"
 
-# 把本设备的两个目录放到位
+# 把四个仓库的目录放到位（见“仓库结构”一节）
 #   device/oneplus/OP68F7L1
+#   device/oneplus/mt6878-common
 #   device/oneplus/OP68F7L1-kernel
 #   vendor/oneplus/OP68F7L1        （blob 已提取，见“vendor 目录”一节）
 # 并从 local_manifests/OP68F7L1.xml 添加 hardware/mediatek、
