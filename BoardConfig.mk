@@ -16,8 +16,11 @@ TARGET_OTA_ASSERT_DEVICE := OP68F7L1,PYS110
 
 # Display
 TARGET_SCREEN_DENSITY := 480
-# OPLUS optical (under display) fingerprint sensor
-TARGET_USES_FOD_ZPOS := true
+
+# Fingerprint: side-mounted sensor integrated in the power button, not an
+# under-display one. The stock OPLUS HAL in /odm implements
+# android.hardware.biometrics.fingerprint (AIDL V3), so the framework needs no
+# FOD/UDFPS configuration — TARGET_USES_FOD_ZPOS stays unset on purpose.
 
 # Fastboot
 TARGET_BOARD_FASTBOOT_INFO_FILE := $(DEVICE_PATH)/fastboot-info.txt
